@@ -5,24 +5,24 @@ from PyQt5.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsTextItem,
     QListWidgetItem, QGraphicsLineItem
 )
-from PyQt5.QtGui import QPainter, QDrag, QPen
+from PyQt5.QtGui import QPainter, QDrag, QPen, QBrush, QColor
 import sys
-
 
 # ---------- Step 1A: Draggable Side Panel ----------
 class DraggableListWidget(QListWidget):
     def __init__(self):
         super().__init__()
+        self.setDragEnabled(True)
 
     def startDrag(self, supportedActions):
         item = self.currentItem()
         if item:
-            drag = QDrag(self)
             mime_data = QMimeData()
             mime_data.setText(item.text())
+            drag = QDrag(self)
             drag.setMimeData(mime_data)
+            print(f"🚀 Drag started with: {item.text()}")
             drag.exec_(Qt.CopyAction)
-
 
 # ---------- Custom Block with Connection Points ----------
 class LogicGateBlock(QGraphicsRectItem):
@@ -47,46 +47,53 @@ class LogicGateBlock(QGraphicsRectItem):
             self.editor.end_connection(self)
         super().mouseReleaseEvent(event)
 
-
+# ---------- Drop Canvas for Receiving Drag Events ----------
 class DropCanvas(QGraphicsView):
-    def __init__(self, scene, editor):
-        super().__init__(scene)
+    def __init__(self, editor, scene, parent=None):
+        super(DropCanvas, self).__init__(parent)
         self.editor = editor
-        self.setAcceptDrops(True)
+        self.setScene(scene)
         self.setRenderHint(QPainter.Antialiasing)
-        self.setStyleSheet("background-color: #fefefe; border: 1px solid #aaa;")
+        self.setAcceptDrops(True)
+        print("🧲 Canvas initialized and ready to accept drops!")
 
     def dragEnterEvent(self, event):
         print("🔵 dragEnterEvent triggered")
         if event.mimeData().hasText():
             event.acceptProposedAction()
         else:
-            print("❌ No text in mimeData!")
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction()
 
     def dropEvent(self, event):
         print("🟢 dropEvent triggered")
-        gate_type = event.mimeData().text()
-        position = self.mapToScene(event.pos())
-        print(f"📍 Dropped gate type: {gate_type} at position: {position}")
-        self.editor.add_gate_node(gate_type, position)
-
+        if event.mimeData().hasText():
+            gate_type = event.mimeData().text()
+            position = self.mapToScene(event.pos())
+            print(f"📍 Dropped: {gate_type} at scene position {position}")
+            self.editor.add_gate_node(gate_type, position)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 # ---------- Logic Gate Editor ----------
 class LogicGateEditor(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.connection_start = None  # Track connection start block
+        self.connection_start = None
 
     def init_ui(self):
         layout = QHBoxLayout()
+        self.scene = QGraphicsScene()
 
         self.side_panel = DraggableListWidget()
         self.side_panel.addItems(["Input", "Output", "AND", "OR", "NOT", "NAND", "NOR", "XOR", "XNOR"])
         self.side_panel.setFixedWidth(150)
 
-        self.scene = QGraphicsScene()
-        self.canvas = DropCanvas(self.scene, self)
+        self.canvas = DropCanvas(self, self.scene)
         self.canvas.setMinimumSize(600, 400)
 
         layout.addWidget(self.side_panel)
@@ -94,6 +101,7 @@ class LogicGateEditor(QWidget):
         self.setLayout(layout)
 
     def add_gate_node(self, gate_type, position=None):
+        print(f"🔧 add_gate_node called with {gate_type} at {position}")
         block = LogicGateBlock(gate_type, self)
         self.scene.addItem(block)
 
@@ -115,7 +123,6 @@ class LogicGateEditor(QWidget):
             self.scene.addItem(line)
         self.connection_start = None
 
-
 # ---------- Logic Gate Node ----------
 class LogicGateNode:
     def __init__(self, gate_type):
@@ -129,10 +136,7 @@ class LogicGateNode:
         elif self.gate_type == "OR":
             self.output = any(self.inputs)
         elif self.gate_type == "NOT":
-            if len(self.inputs) == 1:
-                self.output = not self.inputs[0]
-            else:
-                self.output = None
+            self.output = not self.inputs[0] if len(self.inputs) == 1 else None
         elif self.gate_type == "NAND":
             self.output = not all(self.inputs)
         elif self.gate_type == "NOR":
@@ -147,7 +151,6 @@ class LogicGateNode:
             self.output = self.inputs[0] if self.inputs else None
         else:
             self.output = None
-
 
 # ---------- Main Window ----------
 class MainWindow(QMainWindow):
@@ -164,25 +167,29 @@ class MainWindow(QMainWindow):
     def create_menus(self):
         menubar = self.menuBar()
 
+        # 🎯 File Menu
         file_menu = menubar.addMenu("File")
         new_action = QAction("New", self)
         open_action = QAction("Open", self)
         save_action = QAction("Save", self)
-        exit_action = QAction("Exit", self)
+        exit_action = QAction("Exit", self)  # ✅ Exit action created
+
         file_menu.addAction(new_action)
         file_menu.addAction(open_action)
         file_menu.addAction(save_action)
-        file_menu.addAction(exit_action)
+        file_menu.addAction(exit_action)  # ✅ Added to File menu
 
         new_action.triggered.connect(self.new_tab)
         open_action.triggered.connect(self.open_file)
         save_action.triggered.connect(self.save_file)
-        exit_action.triggered.connect(self.close)
+        exit_action.triggered.connect(self.close)  # ✅ Triggers app exit
 
+        # 🧩 Edit Menu
         edit_menu = menubar.addMenu("Edit")
         for action_name in ["Undo", "Redo", "Cut", "Copy", "Paste", "Delete"]:
             edit_menu.addAction(QAction(action_name, self))
 
+        # 🎨 Window Menu
         window_menu = menubar.addMenu("Window")
         theme_action = QAction("Change Theme", self)
         window_menu.addAction(theme_action)
@@ -200,7 +207,6 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save Circuit File", "", "Text Files (*.txt)")
         if file_name:
             print(f"Saved: {file_name}")
-
 
 # ---------- Run the App ----------
 if __name__ == "__main__":
